@@ -17,6 +17,7 @@ final class OverlayWindowController {
     // We still position using `visibleFrame` so we never enter the reserved top strip.
     private let padding: CGFloat = 0
     private let inMenuBarStrip: Bool = true
+    private var lastFrame: NSRect?
 
     init(model: PrompterModel) {
         self.model = model
@@ -76,13 +77,14 @@ final class OverlayWindowController {
         let width = CGFloat(model.overlayWidth)
         let desiredHeight = CGFloat(model.overlayHeight)
 
-        let x = screen.frame.midX - (width / 2)
+        let x = (screen.frame.midX - (width / 2)).rounded()
 
         // Always pin to the very top of the physical screen so we cover the notch/menu bar
         // even when macOS auto-hides the menu bar (reservedTop may report as 0).
         let height = desiredHeight
         let topRefY = screen.frame.maxY
-        let y = topRefY - height - padding
+        let y = (topRefY - height - padding).rounded()
+        let targetFrame = NSRect(x: x, y: y, width: width.rounded(), height: height.rounded())
 
 #if DEBUG
         debugDump(
@@ -92,8 +94,19 @@ final class OverlayWindowController {
         )
 #endif
 
-        // Use standard setFrame but force it.
-        panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
+        let shouldAnimate: Bool
+        if let lastFrame {
+            let movedEnough = abs(lastFrame.origin.x - targetFrame.origin.x) > 0.5 ||
+                abs(lastFrame.origin.y - targetFrame.origin.y) > 0.5
+            let resizedEnough = abs(lastFrame.size.width - targetFrame.size.width) > 0.5 ||
+                abs(lastFrame.size.height - targetFrame.size.height) > 0.5
+            shouldAnimate = movedEnough || resizedEnough
+        } else {
+            shouldAnimate = false
+        }
+
+        panel.setFrame(targetFrame, display: true, animate: shouldAnimate)
+        lastFrame = targetFrame
         
         // Ensure level is re-applied in case something reset it
         panel.level = .screenSaver

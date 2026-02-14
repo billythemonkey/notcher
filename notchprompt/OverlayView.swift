@@ -148,7 +148,6 @@ struct OverlayView: View {
         .frame(width: model.overlayWidth, height: model.overlayHeight)
         .onHover { hovering in
             isHovering = hovering
-            model.isHovering = hovering
         }
     }
 }

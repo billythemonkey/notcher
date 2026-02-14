@@ -22,7 +22,6 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
     @Published var isRunning: Bool = false
     @Published var isClickThrough: Bool = true
     @Published var privacyModeEnabled: Bool = true
-    @Published var isHovering: Bool = false
     @Published private(set) var hasStartedSession: Bool = false
     @Published private(set) var isCountingDown: Bool = false
     @Published var countdownSeconds: Int = 3

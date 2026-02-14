@@ -22,6 +22,7 @@ struct ScrollingTextView: View {
     private static let loopGap: CGFloat = 24
 
     @State private var contentHeight: CGFloat = 1
+    @State private var viewportHeight: CGFloat = 0
     @State private var phase: CGFloat = 0
     @State private var lastTickDate: Date?
     @State private var targetSpeedMultiplier: Double = 1.0
@@ -48,6 +49,32 @@ struct ScrollingTextView: View {
 
     private var cycleLength: CGFloat {
         max(contentHeight + Self.loopGap, 1)
+    }
+
+    private var topFadeClearInset: CGFloat {
+        guard viewportHeight > 1 else { return 0 }
+        return viewportHeight * clampedFadeFraction
+    }
+
+    private var readabilityPadding: CGFloat {
+        max(2, fontSize * 0.12)
+    }
+
+    private var startAnchorOffset: CGFloat {
+        let fallback = max(8, min(fontSize * 0.45, 22))
+        guard viewportHeight > 1 else { return fallback }
+
+        let raw = topFadeClearInset + readabilityPadding
+        let capped = min(raw, max(18, viewportHeight * 0.38))
+        return max(capped, fallback)
+    }
+
+    private var topOfScriptPhaseFloor: CGFloat {
+        -startAnchorOffset
+    }
+
+    private var topNormalizationThreshold: CGFloat {
+        max(12, fontSize * 1.6)
     }
 
     private var effectiveOffsetY: CGFloat {
@@ -93,7 +120,12 @@ struct ScrollingTextView: View {
                 }
                 .frame(width: viewportProxy.size.width, height: viewportProxy.size.height, alignment: .topLeading)
                 .onAppear {
+                    viewportHeight = max(viewportProxy.size.height, 0)
                     resetPhase()
+                }
+                .onChange(of: viewportProxy.size.height) { newHeight in
+                    viewportHeight = max(newHeight, 0)
+                    normalizeTopAnchorIfNearStart()
                 }
                 .onChange(of: resetToken) { _ in
                     resetPhase()
@@ -103,17 +135,16 @@ struct ScrollingTextView: View {
                 }
                 .onChange(of: jumpBackToken) { _ in
                     guard hasContent else { return }
-                    phase = max(phase - max(0, jumpBackDistancePoints), 0)
+                    phase = max(phase - max(0, jumpBackDistancePoints), topOfScriptPhaseFloor)
                 }
                 .onChange(of: fontSize) { _ in
-                    resetPhase()
+                    normalizeTopAnchorIfNearStart()
                 }
                 .onChange(of: isRunning) { running in
-                    targetSpeedMultiplier = running ? 1.0 : 0.0
                     lastTickDate = timeline.date
                 }
                 .onChange(of: isHovering) { hovering in
-                    targetSpeedMultiplier = hovering ? 0.0 : 1.0
+                    lastTickDate = timeline.date
                 }
                 .onPreferenceChange(ContentHeightPreferenceKey.self) { measured in
                     contentHeight = max(measured, 1)
@@ -190,10 +221,21 @@ struct ScrollingTextView: View {
     }
 
     private func resetPhase() {
-        phase = 0
+        phase = topOfScriptPhaseFloor
         lastTickDate = nil
-        currentSpeedMultiplier = 1.0
-        targetSpeedMultiplier = 1.0
+        let desired = desiredSpeedMultiplier()
+        currentSpeedMultiplier = desired
+        targetSpeedMultiplier = desired
+    }
+
+    private func normalizeTopAnchorIfNearStart() {
+        guard hasContent else { return }
+        guard phase <= topNormalizationThreshold else { return }
+        phase = topOfScriptPhaseFloor
+    }
+
+    private func desiredSpeedMultiplier() -> Double {
+        (isRunning && !isHovering) ? 1.0 : 0.0
     }
 
     private func tick(at date: Date) {
@@ -202,25 +244,40 @@ struct ScrollingTextView: View {
             return
         }
 
-        let dt: CGFloat
+        // Authoritative per-frame run state; don't rely on onChange timing.
+        let shouldRun = isRunning && !isHovering
+        targetSpeedMultiplier = shouldRun ? 1.0 : 0.0
+
+        let totalDt: CGFloat
         if let lastTickDate {
-            dt = max(0, min(CGFloat(date.timeIntervalSince(lastTickDate)), 0.05))
+            totalDt = max(0, min(CGFloat(date.timeIntervalSince(lastTickDate)), 0.25))
         } else {
-            dt = 1.0 / 60.0
+            totalDt = 1.0 / 120.0
         }
 
         self.lastTickDate = date
 
-        // Smoothly interpolate current speed toward target speed
-        let diff = targetSpeedMultiplier - currentSpeedMultiplier
-        if abs(diff) > 0.001 {
-            currentSpeedMultiplier += diff * min(1.0, speedLerpFactor * dt)
-        } else {
-            currentSpeedMultiplier = targetSpeedMultiplier
+        // Integrate in short fixed steps to avoid jitter/jumps at very slow/fast speeds.
+        var remaining = totalDt
+        let maxStep: CGFloat = 1.0 / 120.0
+
+        while remaining > 0 {
+            let step = min(remaining, maxStep)
+
+            let diff = targetSpeedMultiplier - currentSpeedMultiplier
+            if abs(diff) > 0.001 {
+                currentSpeedMultiplier += diff * min(1.0, speedLerpFactor * step)
+            } else {
+                currentSpeedMultiplier = targetSpeedMultiplier
+            }
+
+            phase += CGFloat(speedPointsPerSecond) * CGFloat(currentSpeedMultiplier) * step
+            remaining -= step
         }
 
-        // Only update phase if actually running (speed > 0)
-        phase += CGFloat(speedPointsPerSecond) * CGFloat(currentSpeedMultiplier) * dt
+        if !isRunning, currentSpeedMultiplier < 0.002 {
+            currentSpeedMultiplier = 0
+        }
 
         if phase >= cycleLength * 8 {
             phase = phase.truncatingRemainder(dividingBy: cycleLength)
