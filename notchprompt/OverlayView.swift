@@ -88,7 +88,6 @@ private struct AppleNotchShape: InsettableShape {
 
 struct OverlayView: View {
     @ObservedObject var model: PrompterModel
-    @State private var isHovering: Bool = false
 
     var body: some View {
         // Ratio-driven contour tuned to Apple notch geometry and scaled to the
@@ -127,12 +126,59 @@ struct OverlayView: View {
                 jumpBackToken: model.jumpBackToken,
                 jumpBackDistancePoints: model.jumpBackDistancePoints,
                 fadeFraction: CGFloat(model.edgeFadeFraction),
-                isHovering: isHovering
+                isHovering: false
             )
             .padding(.horizontal, 18)
-            .padding(.top, 36) // Clearance for notch (approx 32pt) + minimal padding
-            .padding(.bottom, 8)
+            .padding(.top, 58)
+            .padding(.bottom, 16)
             .clipShape(Rectangle())
+            
+            if !model.isCountingDown {
+                HStack {
+                    HStack(spacing: 6) {
+                        OverlayControlButton(symbol: model.isRunning ? "pause.fill" : "play.fill") {
+                            model.toggleRunning()
+                        }
+                        .help(model.isRunning ? "Pause" : "Start")
+                        
+                        OverlayControlButton(symbol: "gobackward.5") {
+                            model.jumpBack(seconds: 5)
+                        }
+                        .help("Jump back 5 seconds")
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.7), in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+                    
+                    Spacer(minLength: 8)
+                    
+                    HStack(spacing: 6) {
+                        OverlayControlButton(symbol: "minus", repeatWhilePressed: true) {
+                            model.adjustSpeed(delta: -PrompterModel.speedStep)
+                        }
+                        .help("Decrease speed")
+                        
+                        OverlayControlButton(symbol: "plus", repeatWhilePressed: true) {
+                            model.adjustSpeed(delta: PrompterModel.speedStep)
+                        }
+                        .help("Increase speed")
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.7), in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
 
             if model.isCountingDown {
                 ZStack {
@@ -146,9 +192,61 @@ struct OverlayView: View {
             }
         }
         .frame(width: model.overlayWidth, height: model.overlayHeight)
-        .onHover { hovering in
-            isHovering = hovering
+    }
+}
+
+private struct OverlayControlButton: View {
+    let symbol: String
+    var repeatWhilePressed: Bool = false
+    let action: () -> Void
+    
+    @State private var repeatTask: Task<Void, Never>?
+    @State private var isPressed: Bool = false
+    
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 22, height: 22)
+            .contentShape(Circle())
+            .background((isPressed ? Color.white.opacity(0.18) : Color.white.opacity(0.10)), in: Circle())
+            .overlay(
+                Circle()
+                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
+            )
+            .onLongPressGesture(minimumDuration: 0, maximumDistance: 24, pressing: handlePressStateChange) {}
+            .onDisappear {
+                stopRepeating()
+            }
+    }
+    
+    private func handlePressStateChange(_ pressing: Bool) {
+        isPressed = pressing
+        if pressing {
+            action()
+            startRepeatingIfNeeded()
+        } else {
+            stopRepeating()
         }
+    }
+    
+    private func startRepeatingIfNeeded() {
+        guard repeatWhilePressed else { return }
+        stopRepeating()
+        repeatTask = Task {
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            while !Task.isCancelled {
+                await MainActor.run {
+                    action()
+                }
+                try? await Task.sleep(nanoseconds: 85_000_000)
+            }
+        }
+    }
+    
+    private func stopRepeating() {
+        repeatTask?.cancel()
+        repeatTask = nil
     }
 }
 
