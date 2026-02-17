@@ -9,6 +9,11 @@ import AppKit
 import CoreGraphics
 import SwiftUI
 
+private final class OverlayPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
 @MainActor
 final class OverlayWindowController {
     private let model: PrompterModel
@@ -25,7 +30,7 @@ final class OverlayWindowController {
         let hosting = NSHostingView(rootView: OverlayView(model: model))
 
         let initialFrame = NSRect(x: 0, y: 0, width: model.overlayWidth, height: model.overlayHeight)
-        let panel = NSPanel(
+        let panel = OverlayPanel(
             contentRect: initialFrame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -43,6 +48,7 @@ final class OverlayWindowController {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.ignoresMouseEvents = false
+        panel.becomesKeyOnlyIfNeeded = true
         panel.sharingType = model.privacyModeEnabled ? .none : .readOnly
 
         panel.contentView = hosting
@@ -60,7 +66,7 @@ final class OverlayWindowController {
         debugDump(reason: "setVisible-before isVisible=\(isVisible)", intendedScreen: Self.mainDisplayScreen(), calc: nil)
 #endif
         if isVisible {
-            panel.orderFrontRegardless()
+            panel.makeKeyAndOrderFront(nil)
         } else {
             panel.orderOut(nil)
         }

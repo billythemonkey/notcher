@@ -6,7 +6,9 @@ VERSION="${1:-v1.0.0}"
 DERIVED_DATA_PATH="$ROOT_DIR/build/release"
 OUTPUT_DIR="$ROOT_DIR/dist"
 APP_PATH="$DERIVED_DATA_PATH/Build/Products/Release/notchprompt.app"
-OUTPUT_ZIP="$OUTPUT_DIR/notchprompt-${VERSION}-macos.zip"
+STAGING_DIR="$ROOT_DIR/build/dmg-staging"
+OUTPUT_DMG="$OUTPUT_DIR/notchprompt-${VERSION}-macos.dmg"
+VOLUME_NAME="Notchprompt"
 
 echo "==> Building Release app for ${VERSION}"
 xcodebuild \
@@ -24,10 +26,20 @@ if [[ ! -d "$APP_PATH" ]]; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
-rm -f "$OUTPUT_ZIP"
+rm -rf "$STAGING_DIR"
+mkdir -p "$STAGING_DIR"
+rm -f "$OUTPUT_DMG"
 
-echo "==> Packaging $OUTPUT_ZIP"
-ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$OUTPUT_ZIP"
+cp -R "$APP_PATH" "$STAGING_DIR/"
+ln -s /Applications "$STAGING_DIR/Applications"
+
+echo "==> Packaging $OUTPUT_DMG"
+hdiutil create \
+  -volname "$VOLUME_NAME" \
+  -srcfolder "$STAGING_DIR" \
+  -ov \
+  -format UDZO \
+  "$OUTPUT_DMG"
 
 echo "==> Done"
-echo "$OUTPUT_ZIP"
+echo "$OUTPUT_DMG"

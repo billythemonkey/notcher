@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build release zip
+      - name: Build release dmg
         run: |
           chmod +x scripts/build_release_zip.sh
           ./scripts/build_release_zip.sh "${GITHUB_REF_NAME}"
@@ -24,5 +24,5 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/notchprompt-${{ github.ref_name }}-macos.zip
+          files: dist/notchprompt-${{ github.ref_name }}-macos.dmg
           generate_release_notes: true
