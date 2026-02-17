@@ -25,4 +25,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/notchprompt-${{ github.ref_name }}-macos.dmg
+          body: |
+            Install:
+            - Open the DMG and drag `notchprompt.app` to `/Applications`.
+
+            If macOS says the app is damaged:
+            `xattr -cr /Applications/notchprompt.app && open /Applications/notchprompt.app`
           generate_release_notes: true

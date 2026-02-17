@@ -25,6 +25,11 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
+# CI builds do not have Developer ID certificates; apply ad-hoc signing so
+# Gatekeeper treats the bundle as internally consistent.
+echo "==> Ad-hoc signing app bundle"
+codesign --force --deep --sign - "$APP_PATH"
+
 mkdir -p "$OUTPUT_DIR"
 rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR"
