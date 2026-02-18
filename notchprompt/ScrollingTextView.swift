@@ -18,6 +18,8 @@ struct ScrollingTextView: View {
     let jumpBackDistancePoints: CGFloat
     let fadeFraction: CGFloat
     let isHovering: Bool
+    let scrollMode: PrompterModel.ScrollMode
+    let onReachedEnd: (() -> Void)?
 
     private static let loopGap: CGFloat = 24
 
@@ -27,6 +29,9 @@ struct ScrollingTextView: View {
     @State private var lastTickDate: Date?
     @State private var targetSpeedMultiplier: Double = 1.0
     @State private var currentSpeedMultiplier: Double = 1.0
+    @State private var hasReachedEndInStopMode: Bool = false
+    @State private var hasMeasuredContentHeight: Bool = false
+    @State private var deferredStopTargetPhase: CGFloat? = nil
 
     // Smooth deceleration/acceleration rate (0-1, higher = faster)
     private let speedLerpFactor: Double = 8.0
@@ -79,7 +84,15 @@ struct ScrollingTextView: View {
 
     private var effectiveOffsetY: CGFloat {
         guard hasContent else { return 0 }
+        // Always use truncating remainder so we can keep the multi-copy VStack
+        // rendering in every mode. This avoids structural view changes on mode switch.
         return -(phase.truncatingRemainder(dividingBy: cycleLength))
+    }
+
+    private var endPhase: CGFloat {
+        let bottomReadabilityInset = topFadeClearInset + readabilityPadding
+        let lastLinePhase = contentHeight - max(0, viewportHeight - bottomReadabilityInset)
+        return max(topOfScriptPhaseFloor, lastLinePhase)
     }
 
     private func repetitionCount(for viewportHeight: CGFloat) -> Int {
@@ -95,6 +108,8 @@ struct ScrollingTextView: View {
             TimelineView(.animation) { timeline in
                 ZStack(alignment: .topLeading) {
                     if hasContent && hasStartedSession {
+                        // Always render repeated copies so toggling between infinite
+                        // and stop-at-end never causes a structural view rebuild.
                         let copies = repetitionCount(for: viewportProxy.size.height)
                         VStack(spacing: Self.loopGap) {
                             ForEach(0..<copies, id: \.self) { index in
@@ -123,33 +138,46 @@ struct ScrollingTextView: View {
                     viewportHeight = max(viewportProxy.size.height, 0)
                     resetPhase()
                 }
-                .onChange(of: viewportProxy.size.height) { _, newHeight in
+                .onChange(of: viewportProxy.size.height) { newHeight in
                     viewportHeight = max(newHeight, 0)
                     normalizeTopAnchorIfNearStart()
                 }
-                .onChange(of: resetToken) {
+                .onChange(of: resetToken) { _ in
+                    deferredStopTargetPhase = nil
                     resetPhase()
                 }
-                .onChange(of: text) {
+                .onChange(of: text) { _ in
+                    hasMeasuredContentHeight = false
+                    deferredStopTargetPhase = nil
                     resetPhase()
                 }
-                .onChange(of: jumpBackToken) {
+                .onChange(of: jumpBackToken) { _ in
                     guard hasContent else { return }
+                    hasReachedEndInStopMode = false
+                    deferredStopTargetPhase = nil
                     phase = max(phase - max(0, jumpBackDistancePoints), topOfScriptPhaseFloor)
                 }
-                .onChange(of: fontSize) {
+                .onChange(of: fontSize) { _ in
                     normalizeTopAnchorIfNearStart()
                 }
-                .onChange(of: isRunning) {
+                .onChange(of: scrollMode) { _ in
+                    hasReachedEndInStopMode = false
+                    // Clear any stale target; tick() will lazily recompute on the
+                    // very first frame it runs in the new mode, avoiding the race
+                    // where tick fires before this handler.
+                    deferredStopTargetPhase = nil
+                }
+                .onChange(of: isRunning) { _ in
                     lastTickDate = timeline.date
                 }
-                .onChange(of: isHovering) {
+                .onChange(of: isHovering) { _ in
                     lastTickDate = timeline.date
                 }
                 .onPreferenceChange(ContentHeightPreferenceKey.self) { measured in
                     contentHeight = max(measured, 1)
+                    hasMeasuredContentHeight = measured > 1
                 }
-                .onChange(of: timeline.date) { _, date in
+                .onChange(of: timeline.date) { date in
                     tick(at: date)
                 }
             }
@@ -222,6 +250,8 @@ struct ScrollingTextView: View {
 
     private func resetPhase() {
         phase = topOfScriptPhaseFloor
+        hasReachedEndInStopMode = false
+        deferredStopTargetPhase = nil
         lastTickDate = nil
         let desired = desiredSpeedMultiplier()
         currentSpeedMultiplier = desired
@@ -245,7 +275,7 @@ struct ScrollingTextView: View {
         }
 
         // Authoritative per-frame run state; don't rely on onChange timing.
-        let shouldRun = isRunning && !isHovering
+        let shouldRun = (isRunning && !isHovering) && !(scrollMode == .stopAtEnd && hasReachedEndInStopMode)
         targetSpeedMultiplier = shouldRun ? 1.0 : 0.0
 
         let totalDt: CGFloat
@@ -272,6 +302,34 @@ struct ScrollingTextView: View {
             }
 
             phase += CGFloat(speedPointsPerSecond) * CGFloat(currentSpeedMultiplier) * step
+
+            // Lazily compute the stop target on the first tick after entering
+            // stopAtEnd mode. This runs in the same code path that checks the
+            // threshold, so there is no race with onChange timing.
+            if scrollMode == .stopAtEnd, deferredStopTargetPhase == nil,
+               hasMeasuredContentHeight, !hasReachedEndInStopMode {
+                let vis = phase.truncatingRemainder(dividingBy: cycleLength)
+                let cs = phase - vis
+                deferredStopTargetPhase = vis <= endPhase
+                    ? cs + endPhase
+                    : cs + cycleLength + endPhase
+            }
+
+            if scrollMode == .stopAtEnd, hasMeasuredContentHeight,
+               let target = deferredStopTargetPhase, phase >= target {
+                phase = target
+                targetSpeedMultiplier = 0
+                currentSpeedMultiplier = 0
+                deferredStopTargetPhase = nil
+                remaining = 0
+
+                if !hasReachedEndInStopMode {
+                    hasReachedEndInStopMode = true
+                    onReachedEnd?()
+                }
+                break
+            }
+
             remaining -= step
         }
 
@@ -279,7 +337,7 @@ struct ScrollingTextView: View {
             currentSpeedMultiplier = 0
         }
 
-        if phase >= cycleLength * 8 {
+        if scrollMode == .infinite, phase >= cycleLength * 8 {
             phase = phase.truncatingRemainder(dividingBy: cycleLength)
         }
     }

@@ -126,7 +126,13 @@ struct OverlayView: View {
                 jumpBackToken: model.jumpBackToken,
                 jumpBackDistancePoints: model.jumpBackDistancePoints,
                 fadeFraction: CGFloat(model.edgeFadeFraction),
-                isHovering: false
+                isHovering: false,
+                scrollMode: model.scrollMode,
+                onReachedEnd: {
+                    if model.isRunning {
+                        model.markReachedEndInStopMode()
+                    }
+                }
             )
             .padding(.horizontal, 18)
             .padding(.top, 58)

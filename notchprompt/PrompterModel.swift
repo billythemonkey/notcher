@@ -11,6 +11,11 @@ import CoreGraphics
 
 @MainActor
 final class PrompterModel: ObservableObject {
+    enum ScrollMode: String, CaseIterable {
+        case infinite
+        case stopAtEnd
+    }
+
     static let shared = PrompterModel()
 
     @Published var script: String = """
@@ -25,12 +30,14 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
     @Published private(set) var isCountingDown: Bool = false
     @Published var countdownSeconds: Int = 3
     @Published private(set) var countdownRemaining: Int = 0
+    @Published private(set) var didReachEndInStopMode: Bool = false
 
     // Visual / behavior tuning
     @Published var speedPointsPerSecond: Double = 80
     @Published var fontSize: Double = 20
     @Published var overlayWidth: Double = 600
     @Published var overlayHeight: Double = 150
+    @Published var scrollMode: ScrollMode = .infinite
     // Fraction of the viewport height to fade at top and bottom.
     let edgeFadeFraction: Double = 0.20
 
@@ -57,6 +64,7 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
         static let overlayWidth = "overlayWidth"
         static let overlayHeight = "overlayHeight"
         static let countdownSeconds = "countdownSeconds"
+        static let scrollMode = "scrollMode"
     }
 
     private init() {}
@@ -66,11 +74,13 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
     }
 
     func resetScroll() {
+        didReachEndInStopMode = false
         resetToken = UUID()
     }
 
     func jumpBack(seconds: Double = 5) {
         guard seconds > 0 else { return }
+        didReachEndInStopMode = false
         jumpBackDistancePoints = CGFloat(speedPointsPerSecond * seconds)
         jumpBackToken = UUID()
     }
@@ -88,6 +98,11 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
             return
         }
 
+        if scrollMode == .stopAtEnd, didReachEndInStopMode {
+            // Keyboard "start" from end should restart from the top without requiring manual reset.
+            resetScroll()
+        }
+
         let delay = max(0, countdownSeconds)
         guard delay > 0 else {
             hasStartedSession = true
@@ -96,6 +111,36 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
         }
 
         beginCountdown(seconds: delay)
+    }
+
+    func markReachedEndInStopMode() {
+        guard scrollMode == .stopAtEnd else { return }
+        didReachEndInStopMode = true
+        stop()
+    }
+
+    func setScrollMode(_ newMode: ScrollMode) {
+        // Entire transition is deferred to avoid publishing inside SwiftUI view updates.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let oldMode = self.scrollMode
+            guard oldMode != newMode else { return }
+            let wasTerminalStopState = (oldMode == .stopAtEnd && self.didReachEndInStopMode)
+
+            self.scrollMode = newMode
+
+            if newMode == .infinite {
+                self.didReachEndInStopMode = false
+                if wasTerminalStopState {
+                    self.hasStartedSession = true
+                    self.isCountingDown = false
+                    self.countdownRemaining = 0
+                    self.countdownTask?.cancel()
+                    self.countdownTask = nil
+                    self.isRunning = true
+                }
+            }
+        }
     }
 
     func stop() {
@@ -164,6 +209,12 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
         overlayWidth = clamp(defaults.object(forKey: DefaultsKey.overlayWidth) as? Double ?? overlayWidth, lower: 400, upper: 1200)
         overlayHeight = clamp(defaults.object(forKey: DefaultsKey.overlayHeight) as? Double ?? overlayHeight, lower: 120, upper: 300)
         countdownSeconds = Int(clamp(Double(defaults.object(forKey: DefaultsKey.countdownSeconds) as? Int ?? countdownSeconds), lower: 0, upper: 10))
+        if let rawValue = defaults.string(forKey: DefaultsKey.scrollMode),
+           let savedMode = ScrollMode(rawValue: rawValue) {
+            scrollMode = savedMode
+        } else {
+            scrollMode = .infinite
+        }
     }
 
     func saveToDefaults() {
@@ -177,6 +228,7 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
         defaults.set(overlayWidth, forKey: DefaultsKey.overlayWidth)
         defaults.set(overlayHeight, forKey: DefaultsKey.overlayHeight)
         defaults.set(countdownSeconds, forKey: DefaultsKey.countdownSeconds)
+        defaults.set(scrollMode.rawValue, forKey: DefaultsKey.scrollMode)
     }
 
     private func beginCountdown(seconds: Int) {

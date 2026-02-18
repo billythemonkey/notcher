@@ -130,6 +130,23 @@ struct ContentView: View {
                             .frame(width: 44, alignment: .trailing)
                     }
 
+                    HStack {
+                        Text("Scroll mode")
+                            .frame(width: 72, alignment: .leading)
+                        Picker(
+                            "",
+                            selection: Binding(
+                                get: { model.scrollMode },
+                                set: { model.setScrollMode($0) }
+                            )
+                        ) {
+                            Text("Infinite").tag(PrompterModel.ScrollMode.infinite)
+                            Text("Stop at end").tag(PrompterModel.ScrollMode.stopAtEnd)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                    }
+
                 }
                 .padding(.vertical, 4)
             }

@@ -84,7 +84,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             model.$fontSize.map { _ in () }.eraseToAnyPublisher(),
             model.$overlayWidth.map { _ in () }.eraseToAnyPublisher(),
             model.$overlayHeight.map { _ in () }.eraseToAnyPublisher(),
-            model.$countdownSeconds.map { _ in () }.eraseToAnyPublisher()
+            model.$countdownSeconds.map { _ in () }.eraseToAnyPublisher(),
+            model.$scrollMode.map { _ in () }.eraseToAnyPublisher()
         )
         .debounce(for: .milliseconds(250), scheduler: RunLoop.main)
         .sink { [weak self] in
