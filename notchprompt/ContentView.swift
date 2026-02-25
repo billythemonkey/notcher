@@ -12,36 +12,47 @@ import CoreGraphics
 struct ContentView: View {
     @ObservedObject private var model = PrompterModel.shared
 
-    private let rowLabelWidth: CGFloat = 150
+    private let rowLabelWidth: CGFloat = 164
+    private let valueWidth: CGFloat = 56
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                headerSection
                 playbackSection
                 appearanceSection
                 displaySection
                 privacySection
-                footerSection
+                shortcutsSection
             }
-            .padding(16)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(minWidth: 560, minHeight: 540)
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(minWidth: 620, minHeight: 460)
+    }
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Settings")
+                .font(.title3.weight(.semibold))
+            Text("Configure playback, appearance, and display behavior for the overlay.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.bottom, 2)
     }
 
     private var playbackSection: some View {
-        GroupBox("Playback") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Speed")
-                        .frame(width: rowLabelWidth, alignment: .leading)
-                    Slider(value: $model.speedPointsPerSecond, in: 10...300, step: 5)
-                    Text("\(Int(model.speedPointsPerSecond))")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 52, alignment: .trailing)
-                }
+        SettingsSection(title: "Playback") {
+            VStack(alignment: .leading, spacing: 12) {
+                sliderRow(
+                    title: "Speed",
+                    valueText: "\(Int(model.speedPointsPerSecond))",
+                    slider: Slider(value: $model.speedPointsPerSecond, in: 10...300, step: 5)
+                )
 
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     Text("Scroll mode")
                         .frame(width: rowLabelWidth, alignment: .leading)
                     Picker(
@@ -71,10 +82,10 @@ struct ContentView: View {
                     Spacer(minLength: 0)
                 }
 
-                HStack {
-                    Text("Countdown duration")
-                        .frame(width: rowLabelWidth, alignment: .leading)
-                    Slider(
+                sliderRow(
+                    title: "Countdown duration",
+                    valueText: "\(model.countdownSeconds)s",
+                    slider: Slider(
                         value: Binding(
                             get: { Double(model.countdownSeconds) },
                             set: { model.countdownSeconds = Int($0.rounded()) }
@@ -83,49 +94,37 @@ struct ContentView: View {
                         step: 1
                     )
                     .disabled(model.countdownBehavior == .never)
-                    Text("\(model.countdownSeconds)s")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 52, alignment: .trailing)
-                }
+                )
             }
         }
     }
 
     private var appearanceSection: some View {
-        GroupBox("Appearance") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Font size")
-                        .frame(width: rowLabelWidth, alignment: .leading)
-                    Slider(value: $model.fontSize, in: 12...40, step: 1)
-                    Text("\(Int(model.fontSize))")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 52, alignment: .trailing)
-                }
+        SettingsSection(title: "Appearance") {
+            VStack(alignment: .leading, spacing: 12) {
+                sliderRow(
+                    title: "Font size",
+                    valueText: "\(Int(model.fontSize))",
+                    slider: Slider(value: $model.fontSize, in: 12...40, step: 1)
+                )
 
-                HStack {
-                    Text("Overlay width")
-                        .frame(width: rowLabelWidth, alignment: .leading)
-                    Slider(value: $model.overlayWidth, in: 400...1200, step: 10)
-                    Text("\(Int(model.overlayWidth))")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 52, alignment: .trailing)
-                }
+                sliderRow(
+                    title: "Overlay width",
+                    valueText: "\(Int(model.overlayWidth))",
+                    slider: Slider(value: $model.overlayWidth, in: 400...1200, step: 10)
+                )
 
-                HStack {
-                    Text("Overlay height")
-                        .frame(width: rowLabelWidth, alignment: .leading)
-                    Slider(value: $model.overlayHeight, in: 120...300, step: 2)
-                    Text("\(Int(model.overlayHeight))")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 52, alignment: .trailing)
-                }
+                sliderRow(
+                    title: "Overlay height",
+                    valueText: "\(Int(model.overlayHeight))",
+                    slider: Slider(value: $model.overlayHeight, in: 120...300, step: 2)
+                )
             }
         }
     }
 
     private var displaySection: some View {
-        GroupBox("Display") {
+        SettingsSection(title: "Display") {
             HStack {
                 Text("Show overlay on")
                     .frame(width: rowLabelWidth, alignment: .leading)
@@ -143,24 +142,56 @@ struct ContentView: View {
     }
 
     private var privacySection: some View {
-        GroupBox("Privacy") {
+        SettingsSection(title: "Privacy") {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Show overlay", isOn: $model.isOverlayVisible)
                 Toggle("Limit screen sharing capture", isOn: $model.privacyModeEnabled)
                 Text("Best effort only. Capture behavior can vary by app.")
-                    .font(.system(size: 11))
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
-    private var footerSection: some View {
+    private var shortcutsSection: some View {
+        SettingsSection(title: "Keyboard Shortcuts") {
+            VStack(alignment: .leading, spacing: 6) {
+                shortcutRow("Option+Command+P", "Start / Pause")
+                shortcutRow("Option+Command+R", "Reset scroll")
+                shortcutRow("Option+Command+J", "Jump back 5 seconds")
+                shortcutRow("Option+Command+H", "Toggle privacy mode")
+                shortcutRow("Option+Command+O", "Toggle overlay visibility")
+                shortcutRow("Option+Command+=", "Increase speed")
+                shortcutRow("Option+Command+-", "Decrease speed")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sliderRow<SliderView: View>(
+        title: String,
+        valueText: String,
+        slider: SliderView
+    ) -> some View {
         HStack {
-            Spacer()
-            Text("Open Script Editor and runtime controls from the menu bar.")
-                .font(.system(size: 11))
+            Text(title)
+                .frame(width: rowLabelWidth, alignment: .leading)
+            slider
+            Text(valueText)
                 .foregroundStyle(.secondary)
-            Spacer()
+                .frame(width: valueWidth, alignment: .trailing)
+        }
+    }
+
+    private func shortcutRow(_ keys: String, _ action: String) -> some View {
+        HStack(spacing: 12) {
+            Text(keys)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 175, alignment: .leading)
+            Text(action)
+                .font(.subheadline)
+            Spacer(minLength: 0)
         }
     }
 
@@ -172,6 +203,21 @@ struct ContentView: View {
     }
 }
 
+private struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        GroupBox(label: Text(title).font(.headline)) {
+            VStack(alignment: .leading, spacing: 12) {
+                content
+            }
+            .padding(.top, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 #if DEBUG
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
@@ -179,8 +225,8 @@ struct ContentView_Previews: PreviewProvider {
             .previewDisplayName("Default")
 
         ContentView()
-            .frame(width: 560, height: 360)
-            .previewDisplayName("Small Height Scroll")
+            .frame(width: 620, height: 360)
+            .previewDisplayName("Compact Height")
     }
 }
 #endif

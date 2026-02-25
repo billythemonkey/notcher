@@ -67,6 +67,11 @@ final class OverlayWindowController {
         debugDump(reason: "setVisible-before isVisible=\(isVisible)", intendedScreen: targetScreen(), calc: nil)
 #endif
         if isVisible {
+            // Ensure the panel can reappear even when the app is backgrounded.
+            reposition()
+            panel.level = .screenSaver
+            panel.alphaValue = 1.0
+            panel.orderFrontRegardless()
             panel.makeKeyAndOrderFront(nil)
         } else {
             panel.orderOut(nil)
