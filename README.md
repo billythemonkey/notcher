@@ -28,6 +28,9 @@ Native macOS notch-adjacent teleprompter for presentations and recordings.
 - Optional countdown before scrolling starts.
 - Import/export plain text scripts.
 - Privacy mode (`NSWindow.SharingType`, best-effort/app-dependent).
+- **Live Translation**: Listen to a call (e.g. Teams), auto-detect the spoken
+  language, and see a live translation in the overlay. Powered by Apple's
+  Speech and Translation frameworks (macOS 15+).
 
 ## Requirements
 
@@ -75,6 +78,7 @@ If it is still blocked:
 | `⌥⌘H` | Toggle Privacy Mode |
 | `⌥⌘=` | Increase speed |
 | `⌥⌘-` | Decrease speed |
+| `⌥⌘T` | Toggle live translation |
 
 ## Build From Source
 

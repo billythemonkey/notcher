@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case toggleOverlay = "o"
         case speedUp = "="
         case speedDown = "-"
+        case toggleTranslation = "t"
     }
 
     private let shortcutModifiers: NSEvent.ModifierFlags = [.command, .option]
@@ -36,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var privacyModeItem: NSMenuItem?
     private var speedUpItem: NSMenuItem?
     private var speedDownItem: NSMenuItem?
+    private var translationItem: NSMenuItem?
     private var localKeyMonitor: Any?
     private var globalKeyMonitor: Any?
 
@@ -121,7 +123,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             model.$countdownSeconds.map { _ in () }.eraseToAnyPublisher(),
             model.$countdownBehavior.map { _ in () }.eraseToAnyPublisher(),
             model.$scrollMode.map { _ in () }.eraseToAnyPublisher(),
-            model.$selectedScreenID.map { _ in () }.eraseToAnyPublisher()
+            model.$selectedScreenID.map { _ in () }.eraseToAnyPublisher(),
+            model.$isLiveTranslationMode.map { _ in () }.eraseToAnyPublisher(),
+            model.$targetLanguageCode.map { _ in () }.eraseToAnyPublisher()
         )
         .debounce(for: .milliseconds(250), scheduler: RunLoop.main)
         .sink { [weak self] in
@@ -207,6 +211,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         menu.addItem(.separator())
 
+        let translation = NSMenuItem(
+            title: "Live Translation (Option+Command+T)",
+            action: #selector(toggleTranslation),
+            keyEquivalent: Shortcut.toggleTranslation.rawValue
+        )
+        translation.target = self
+        translation.keyEquivalentModifierMask = shortcutModifiers
+        menu.addItem(translation)
+        translationItem = translation
+
+        menu.addItem(.separator())
+
         let openScriptEditor = NSMenuItem(title: "Script Editor…", action: #selector(openScriptEditorWindow), keyEquivalent: "")
         openScriptEditor.target = self
         menu.addItem(openScriptEditor)
@@ -256,6 +272,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc private func decreaseSpeed() {
         model.adjustSpeed(delta: -PrompterModel.speedStep)
+    }
+
+    @objc private func toggleTranslation() {
+        model.isLiveTranslationMode.toggle()
+        let manager = LiveTranslationManager.shared
+        if model.isLiveTranslationMode {
+            manager.targetLanguageCode = model.targetLanguageCode
+            manager.startListening()
+        } else {
+            manager.stopListening()
+        }
     }
 
     @objc private func openMainWindow() {
@@ -335,6 +362,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .speedDown:
             model.adjustSpeed(delta: -PrompterModel.speedStep)
             return true
+        case .toggleTranslation:
+            toggleTranslation()
+            return true
         }
     }
 
@@ -373,6 +403,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         check("-", .speedDown)
         check("_", .speedDown)
 
+        check("t", .toggleTranslation)
+
         let invalid = shortcut(charactersIgnoringModifiers: "p", flags: [.command])
         assert(invalid == nil, "Shortcuts should require exact Option+Command modifiers")
     }
@@ -397,6 +429,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
 
         if menuItem === speedUpItem || menuItem === speedDownItem {
+            return true
+        }
+
+        if menuItem === translationItem {
+            menuItem.state = model.isLiveTranslationMode ? .on : .off
             return true
         }
 
