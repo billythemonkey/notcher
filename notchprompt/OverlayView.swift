@@ -88,6 +88,7 @@ private struct AppleNotchShape: InsettableShape {
 
 struct OverlayView: View {
     @ObservedObject var model: PrompterModel
+    @ObservedObject private var translationManager = LiveTranslationManager.shared
 
     var body: some View {
         // Ratio-driven contour tuned to Apple notch geometry and scaled to the
@@ -116,71 +117,109 @@ struct OverlayView: View {
 
             // The scroller is hard-clipped (so text truly "cuts off") and we add
             // subtle blur bands at the top/bottom to soften the exit.
-            ScrollingTextView(
-                text: model.script,
-                fontSize: CGFloat(model.fontSize),
-                speedPointsPerSecond: model.speedPointsPerSecond,
-                isRunning: model.isRunning,
-                hasStartedSession: model.hasStartedSession,
-                resetToken: model.resetToken,
-                jumpBackToken: model.jumpBackToken,
-                jumpBackDistancePoints: model.jumpBackDistancePoints,
-                fadeFraction: CGFloat(model.edgeFadeFraction),
-                backgroundOpacity: model.backgroundOpacity,
-                isHovering: false,
-                scrollMode: model.scrollMode,
-                onReachedEnd: {
-                    if model.isRunning {
-                        model.markReachedEndInStopMode()
+            if model.isLiveTranslationMode {
+                LiveTranslationOverlayContent(
+                    model: model,
+                    translationManager: translationManager
+                )
+                .padding(.horizontal, 18)
+                .padding(.top, 58)
+                .padding(.bottom, 16)
+                .clipShape(Rectangle())
+            } else {
+                ScrollingTextView(
+                    text: model.script,
+                    fontSize: CGFloat(model.fontSize),
+                    speedPointsPerSecond: model.speedPointsPerSecond,
+                    isRunning: model.isRunning,
+                    hasStartedSession: model.hasStartedSession,
+                    resetToken: model.resetToken,
+                    jumpBackToken: model.jumpBackToken,
+                    jumpBackDistancePoints: model.jumpBackDistancePoints,
+                    fadeFraction: CGFloat(model.edgeFadeFraction),
+                    backgroundOpacity: model.backgroundOpacity,
+                    isHovering: false,
+                    scrollMode: model.scrollMode,
+                    onReachedEnd: {
+                        if model.isRunning {
+                            model.markReachedEndInStopMode()
+                        }
                     }
-                }
-            )
-            .padding(.horizontal, 18)
-            .padding(.top, 58)
-            .padding(.bottom, 16)
-            .clipShape(Rectangle())
+                )
+                .padding(.horizontal, 18)
+                .padding(.top, 58)
+                .padding(.bottom, 16)
+                .clipShape(Rectangle())
+            }
             
             if !model.isCountingDown {
                 HStack {
-                    HStack(spacing: 6) {
-                        OverlayControlButton(symbol: model.isRunning ? "pause.fill" : "play.fill") {
-                            model.toggleRunning()
+                    if model.isLiveTranslationMode {
+                        HStack(spacing: 6) {
+                            OverlayControlButton(
+                                symbol: translationManager.isListening ? "stop.fill" : "play.fill"
+                            ) {
+                                if translationManager.isListening {
+                                    translationManager.stopListening()
+                                    model.isLiveTranslationMode = false
+                                } else {
+                                    translationManager.targetLanguageCode = model.targetLanguageCode
+                                    translationManager.startListening()
+                                    model.isLiveTranslationMode = true
+                                }
+                            }
+                            .help(translationManager.isListening ? "Stop translation" : "Start translation")
                         }
-                        .help(model.isRunning ? "Pause" : "Start")
-                        
-                        OverlayControlButton(symbol: "gobackward.5") {
-                            model.jumpBack(seconds: 5)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.7), in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                    } else {
+                        HStack(spacing: 6) {
+                            OverlayControlButton(symbol: model.isRunning ? "pause.fill" : "play.fill") {
+                                model.toggleRunning()
+                            }
+                            .help(model.isRunning ? "Pause" : "Start")
+                            
+                            OverlayControlButton(symbol: "gobackward.5") {
+                                model.jumpBack(seconds: 5)
+                            }
+                            .help("Jump back 5 seconds")
                         }
-                        .help("Jump back 5 seconds")
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.7), in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.7), in: Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    )
                     
                     Spacer(minLength: 8)
                     
-                    HStack(spacing: 6) {
-                        OverlayControlButton(symbol: "minus", repeatWhilePressed: true) {
-                            model.adjustSpeed(delta: -PrompterModel.speedStep)
+                    if !model.isLiveTranslationMode {
+                        HStack(spacing: 6) {
+                            OverlayControlButton(symbol: "minus", repeatWhilePressed: true) {
+                                model.adjustSpeed(delta: -PrompterModel.speedStep)
+                            }
+                            .help("Decrease speed")
+                            
+                            OverlayControlButton(symbol: "plus", repeatWhilePressed: true) {
+                                model.adjustSpeed(delta: PrompterModel.speedStep)
+                            }
+                            .help("Increase speed")
                         }
-                        .help("Decrease speed")
-                        
-                        OverlayControlButton(symbol: "plus", repeatWhilePressed: true) {
-                            model.adjustSpeed(delta: PrompterModel.speedStep)
-                        }
-                        .help("Increase speed")
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.7), in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.7), in: Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    )
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 8)

@@ -11,6 +11,7 @@ import CoreGraphics
 
 struct ContentView: View {
     @ObservedObject private var model = PrompterModel.shared
+    @ObservedObject private var translationManager = LiveTranslationManager.shared
 
     private let rowLabelWidth: CGFloat = 164
     private let valueWidth: CGFloat = 56
@@ -20,6 +21,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 12) {
                 headerSection
                 playbackSection
+                liveTranslationSection
                 appearanceSection
                 displaySection
                 privacySection
@@ -99,6 +101,15 @@ struct ContentView: View {
         }
     }
 
+    private var liveTranslationSection: some View {
+        SettingsSection(title: "Live Translation") {
+            LiveTranslationSettingsView(
+                model: model,
+                translationManager: translationManager
+            )
+        }
+    }
+
     private var appearanceSection: some View {
         SettingsSection(title: "Appearance") {
             VStack(alignment: .leading, spacing: 12) {
@@ -163,6 +174,7 @@ struct ContentView: View {
                 shortcutRow("Option+Command+O", "Toggle overlay visibility")
                 shortcutRow("Option+Command+=", "Increase speed")
                 shortcutRow("Option+Command+-", "Decrease speed")
+                shortcutRow("Option+Command+T", "Toggle live translation")
             }
         }
     }

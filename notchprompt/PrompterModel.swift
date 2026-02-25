@@ -64,6 +64,10 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
     // Fraction of the viewport height to fade at top and bottom.
     let edgeFadeFraction: Double = 0.20
 
+    // Live Translation
+    @Published var isLiveTranslationMode: Bool = false
+    @Published var targetLanguageCode: String = "pt-PT"
+
     // Used to signal an immediate reset to the scrolling view.
     @Published private(set) var resetToken: UUID = UUID()
     @Published private(set) var jumpBackToken: UUID = UUID()
@@ -92,6 +96,8 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
         static let countdownBehavior = "countdownBehavior"
         static let scrollMode = "scrollMode"
         static let selectedScreenID = "selectedScreenID"
+        static let isLiveTranslationMode = "isLiveTranslationMode"
+        static let targetLanguageCode = "targetLanguageCode"
     }
 
     private init() {}
@@ -265,6 +271,10 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
             scrollMode = .infinite
         }
         selectedScreenID = CGDirectDisplayID(defaults.object(forKey: DefaultsKey.selectedScreenID) as? UInt32 ?? 0)
+        isLiveTranslationMode = defaults.object(forKey: DefaultsKey.isLiveTranslationMode) as? Bool ?? false
+        if let savedLang = defaults.string(forKey: DefaultsKey.targetLanguageCode), !savedLang.isEmpty {
+            targetLanguageCode = savedLang
+        }
     }
 
     func saveToDefaults() {
@@ -282,6 +292,8 @@ Tip: Use the menu bar icon to start/pause or reset the scroll.
         defaults.set(countdownBehavior.rawValue, forKey: DefaultsKey.countdownBehavior)
         defaults.set(scrollMode.rawValue, forKey: DefaultsKey.scrollMode)
         defaults.set(selectedScreenID, forKey: DefaultsKey.selectedScreenID)
+        defaults.set(isLiveTranslationMode, forKey: DefaultsKey.isLiveTranslationMode)
+        defaults.set(targetLanguageCode, forKey: DefaultsKey.targetLanguageCode)
     }
 
     private func beginCountdown(seconds: Int) {
