@@ -1,28 +1,68 @@
 name: Build and Release
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (example: 1.1.0 or v1.1.0)"
+        required: true
+        default: "1.1.0"
 
 permissions:
   contents: write
 
 jobs:
   release:
-    runs-on: macos-latest
+    runs-on: macos-15
+    env:
+      RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve release version
+        run: |
+          RAW_VERSION="${RELEASE_VERSION}"
+          if [[ ! "${RAW_VERSION}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version format: ${RAW_VERSION}" >&2
+            exit 1
+          fi
+          TAG_VERSION="${RAW_VERSION#v}"
+          RELEASE_TAG="v${TAG_VERSION}"
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION_NUMBER=${TAG_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Verify app marketing version
+        run: |
+          MARKETING_VERSION="$(awk '/MARKETING_VERSION = / { gsub(/;/, "", $3); print $3; exit }' notchprompt.xcodeproj/project.pbxproj)"
+          if [[ -z "${MARKETING_VERSION}" ]]; then
+            echo "Unable to read MARKETING_VERSION from project file." >&2
+            exit 1
+          fi
+          if [[ "${MARKETING_VERSION}" != "${RELEASE_VERSION_NUMBER}" ]]; then
+            echo "Version mismatch: MARKETING_VERSION=${MARKETING_VERSION}, release=${RELEASE_VERSION_NUMBER}" >&2
+            exit 1
+          fi
+
       - name: Build release dmg
         run: |
           chmod +x scripts/build_release_zip.sh
-          ./scripts/build_release_zip.sh "${GITHUB_REF_NAME}"
+          ./scripts/build_release_zip.sh "${RELEASE_TAG}"
+
+      - name: Compatibility check (deployment target + bundled minimum system)
+        run: |
+          chmod +x scripts/check_release_compat.sh
+          ./scripts/check_release_compat.sh "build/release/Build/Products/Release/notchprompt.app"
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/notchprompt-${{ github.ref_name }}-macos.dmg
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: dist/notchprompt-${{ env.RELEASE_TAG }}-macos.dmg
           body: |
             Install:
             - Open the DMG and drag `notchprompt.app` to `/Applications`.
